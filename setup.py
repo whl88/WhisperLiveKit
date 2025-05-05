@@ -25,6 +25,7 @@ setup(
         "whisper-timestamped": ["whisper-timestamped"],
         "mlx-whisper": ["mlx-whisper"],
         "openai": ["openai"],
+        "pyaudiowpatch": ["PyAudioWPatch"],
     },
     package_data={
         'whisperlivekit': ['web/*.html'],

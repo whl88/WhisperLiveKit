@@ -1,10 +1,13 @@
+import sys
+from argparse import Namespace, ArgumentParser
 try:
     from whisperlivekit.whisper_streaming_custom.whisper_online import backend_factory, warmup_asr
 except ImportError:
-    from .whisper_streaming_custom.whisper_online import backend_factory, warmup_asr
-from argparse import Namespace, ArgumentParser
+    if '.' not in sys.path:
+        sys.path.insert(0, '.')
+    from whisperlivekit.whisper_streaming_custom.whisper_online import backend_factory, warmup_asr
 
-def parse_args():
+def _parse_args_internal():
     parser = ArgumentParser(description="Whisper FastAPI Online Server")
     parser.add_argument(
         "--host",
@@ -130,38 +133,55 @@ def parse_args():
         help="Set the log level",
         default="DEBUG",
     )
+    parser.add_argument(
+        "--audio-input",
+        type=str,
+        default="websocket",
+        choices=["websocket", "pyaudiowpatch"],
+        help="Source of the audio input. 'websocket' expects audio via WebSocket (default). 'pyaudiowpatch' uses PyAudioWPatch to capture system audio output.",
+    )
     parser.add_argument("--ssl-certfile", type=str, help="Path to the SSL certificate file.", default=None)
     parser.add_argument("--ssl-keyfile", type=str, help="Path to the SSL private key file.", default=None)
 
 
     args = parser.parse_args()
-    
+
     args.transcription = not args.no_transcription
-    args.vad = not args.no_vad    
+    args.vad = not args.no_vad
     delattr(args, 'no_transcription')
     delattr(args, 'no_vad')
-    
+
     return args
 
+_cli_args = _parse_args_internal()
+
+def get_parsed_args() -> Namespace:
+    """Returns the globally parsed command-line arguments."""
+    return _cli_args
+
+# --- WhisperLiveKit Class ---
 class WhisperLiveKit:
     _instance = None
     _initialized = False
-    
-    def __new__(cls, *args, **kwargs):
+
+    def __new__(cls, args: Namespace = None, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
-    
-    def __init__(self, **kwargs):
+
+    def __init__(self, args: Namespace = None, **kwargs):
+        """
+        Initializes WhisperLiveKit.
+
+        Args:
+            args (Namespace, optional): Pre-parsed arguments. If None, uses globally parsed args.
+                                        Defaults to None.
+            **kwargs: Additional keyword arguments (currently not used directly but captured).
+        """
         if WhisperLiveKit._initialized:
             return
-            
-        default_args = vars(parse_args())
-        
-        merged_args = {**default_args, **kwargs}
-        
-        self.args = Namespace(**merged_args)
-        
+
+        self.args = args if args is not None else get_parsed_args()
         self.asr = None
         self.tokenizer = None
         self.diarization = None

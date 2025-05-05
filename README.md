@@ -112,6 +112,9 @@ pip install whisperlivekit[whisper]              # Original Whisper
 pip install whisperlivekit[whisper-timestamped]  # Improved timestamps
 pip install whisperlivekit[mlx-whisper]          # Apple Silicon optimization
 pip install whisperlivekit[openai]               # OpenAI API
+
+# System audio capture (Windows only)
+pip install whisperlivekit[pyaudiowpatch]        # Use PyAudioWPatch for system audio loopback
 ```
 
 ### 🎹 Pyannote Models Setup
@@ -139,6 +142,9 @@ whisperlivekit-server --model tiny.en
 
 # Advanced configuration with diarization
 whisperlivekit-server --host 0.0.0.0 --port 8000 --model medium --diarization --language auto
+
+# Using PyAudioWPatch for system audio input (Windows only)
+whisperlivekit-server --model tiny.en --audio-input pyaudiowpatch
 ```
 
 ### Python API Integration (Backend)
@@ -209,6 +215,7 @@ WhisperLiveKit offers extensive configuration options:
 | `--no-vad` | Disable Voice Activity Detection | `False` |
 | `--buffer_trimming` | Buffer trimming strategy (`sentence` or `segment`) | `segment` |
 | `--warmup-file` | Audio file path for model warmup | `jfk.wav` |
+| `--audio-input` | Source of audio (`websocket` or `pyaudiowpatch`) | `websocket` |
 | `--ssl-certfile` | Path to the SSL certificate file (for HTTPS support) | `None` |
 | `--ssl-keyfile` | Path to the SSL private key file (for HTTPS support) | `None` |
 
@@ -218,12 +225,16 @@ WhisperLiveKit offers extensive configuration options:
   <img src="https://raw.githubusercontent.com/QuentinFuxa/WhisperLiveKit/refs/heads/main/demo.png" alt="WhisperLiveKit in Action" width="500">
 </p>
 
-1. **Audio Capture**: Browser's MediaRecorder API captures audio in webm/opus format
-2. **Streaming**: Audio chunks are sent to the server via WebSocket
-3. **Processing**: Server decodes audio with FFmpeg and streams into Whisper for transcription
-4. **Real-time Output**: 
-   - Partial transcriptions appear immediately in light gray (the 'aperçu')
-   - Finalized text appears in normal color
+1. **Audio Input**:
+   - **WebSocket (Default)**: Browser's MediaRecorder API captures audio (webm/opus), streams via WebSocket.
+   - **PyAudioWPatch (Windows Only)**: Captures system audio output directly using WASAPI loopback. Requires `--audio-input pyaudiowpatch`.
+2. **Processing**:
+   - **WebSocket**: Server decodes webm/opus audio with FFmpeg.
+   - **PyAudioWPatch**: Server receives raw PCM audio directly.
+   - Audio is streamed into Whisper for transcription.
+3. **Real-time Output**:
+   - Partial transcriptions appear immediately in light gray (the 'aperçu').
+   - Finalized text appears in normal color.
    - (When enabled) Different speakers are identified and highlighted
 
 ## 🚀 Deployment Guide
