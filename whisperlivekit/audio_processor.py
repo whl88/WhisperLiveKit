@@ -563,22 +563,22 @@ class AudioProcessor:
 
 
     async def process_audio(self, message):
-        """Process incoming audio data."""
         if not message:
-            logger.info("Empty audio message received, initiating stop sequence.")
             self.is_stopping = True
-            # Signal FFmpeg manager to stop accepting data
-            await self.ffmpeg_manager.stop()
             return
 
         if self.is_stopping:
-            logger.warning("AudioProcessor is stopping. Ignoring incoming audio.")
             return
 
-        success = await self.ffmpeg_manager.write_data(message)
-        if not success:
-            ffmpeg_state = await self.ffmpeg_manager.get_state()
-            if ffmpeg_state == FFmpegState.FAILED:
-                logger.error("FFmpeg is in FAILED state, cannot process audio")
-            else:
-                logger.warning("Failed to write audio data to FFmpeg")
+        # 直接累加PCM数据
+        self.pcm_buffer.extend(message)
+
+        # 达到一秒音频长度时处理
+        while len(self.pcm_buffer) >= self.bytes_per_sec:
+            chunk = self.pcm_buffer[:self.bytes_per_sec]
+            self.pcm_buffer = self.pcm_buffer[self.bytes_per_sec:]
+            pcm_array = self.convert_pcm_to_float(chunk)
+            if self.args.transcription and self.transcription_queue:
+                await self.transcription_queue.put(pcm_array.copy())
+            if self.args.diarization and self.diarization_queue:
+                await self.diarization_queue.put(pcm_array.copy())

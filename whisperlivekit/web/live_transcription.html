@@ -550,25 +550,44 @@
         async function startRecording() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                // 采样率需与后端一致
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
                 analyser = audioContext.createAnalyser();
                 analyser.fftSize = 256;
                 microphone = audioContext.createMediaStreamSource(stream);
                 microphone.connect(analyser);
-                
-                recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-                recorder.ondataavailable = (e) => {
+
+                // 新增：用ScriptProcessorNode采集PCM
+                const processor = audioContext.createScriptProcessor(4096, 1, 1);
+                microphone.connect(processor);
+                processor.connect(audioContext.destination);
+
+                // 建立WebSocket连接
+                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                    await setupWebSocket();
+                }
+                websocket.binaryType = "arraybuffer";
+
+                processor.onaudioprocess = function(e) {
+                    const floatData = e.inputBuffer.getChannelData(0);
+                    const pcmData = new Int16Array(floatData.length);
+                    for (let i = 0; i < floatData.length; i++) {
+                        let s = Math.max(-1, Math.min(1, floatData[i]));
+                        pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
                     if (websocket && websocket.readyState === WebSocket.OPEN) {
-                        websocket.send(e.data);
+                        websocket.send(pcmData.buffer);
                     }
                 };
-                recorder.start(chunkDuration);
-                
+
+                // 保存processor以便后续关闭
+                window._pcmProcessor = processor;
+
                 startTime = Date.now();
                 timerInterval = setInterval(updateTimer, 1000);
                 drawWaveform();
-                
+
                 isRecording = true;
                 updateUI();
             } catch (err) {
@@ -580,28 +599,28 @@
         async function stopRecording() {
             userClosing = true;
             waitingForStop = true;
-            
+
             if (websocket && websocket.readyState === WebSocket.OPEN) {
-                // Send empty audio buffer as stop signal
-                const emptyBlob = new Blob([], { type: 'audio/webm' });
-                websocket.send(emptyBlob);
+                // 发送空buffer作为停止信号
+                websocket.send(new ArrayBuffer(0));
                 statusText.textContent = "Recording stopped. Processing final audio...";
             }
-            
-            if (recorder) {
-                recorder.stop();
-                recorder = null;
+
+            // 断开并清理processor
+            if (window._pcmProcessor) {
+                window._pcmProcessor.disconnect();
+                window._pcmProcessor = null;
             }
-            
+
             if (microphone) {
                 microphone.disconnect();
                 microphone = null;
             }
-            
+
             if (analyser) {
                 analyser = null;
             }
-            
+
             if (audioContext && audioContext.state !== 'closed') {
                 try {
                     audioContext.close();
@@ -610,22 +629,21 @@
                 }
                 audioContext = null;
             }
-            
+
             if (animationFrame) {
                 cancelAnimationFrame(animationFrame);
                 animationFrame = null;
             }
-            
+
             if (timerInterval) {
                 clearInterval(timerInterval);
                 timerInterval = null;
-            }            
+            }
             timerElement.textContent = "00:00";
             startTime = null;
-            
-            
+
             isRecording = false;
-            updateUI();	
+            updateUI();
         }
 
         async function toggleRecording() {
